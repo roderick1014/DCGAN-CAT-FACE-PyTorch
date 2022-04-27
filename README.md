@@ -18,3 +18,5 @@
 
 #### **epoch_400:**
 ![Fake_ep400](https://user-images.githubusercontent.com/73574008/165486197-9fc4fb33-18bf-41d4-8d4b-52caf1d8d839.png)
+
+#### **Pre-trained weights:** https://drive.google.com/drive/folders/1o21b1sRFJvsOHn2e59xfk2ZXESSqoQOV?usp=sharing
