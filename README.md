@@ -1,4 +1,4 @@
-### **DCGAN_CAT_FACE_PyTorch**
+### **DCGAN-CAT-FACE-PyTorch**
 
 #### **Dataset:** https://www.kaggle.com/datasets/spandan2/cats-faces-64x64-for-generative-models
 
