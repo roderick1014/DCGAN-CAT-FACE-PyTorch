@@ -11,7 +11,7 @@ class Discriminator(nn.Module):
             nn.Conv2d(features_d, features_d * 2, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2),
             nn.Conv2d(features_d * 2, features_d * 4, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2),
+            nn.LeakyReLU(0.2), 
             nn.Conv2d(features_d * 4 , features_d * 8 , 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2),
             # After all _block img output is 4x4 (Conv2d below makes into 1x1)

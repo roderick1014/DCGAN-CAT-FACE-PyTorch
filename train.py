@@ -1,124 +1,89 @@
-import logging
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import config
 import torchvision
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
+from utils import *
+from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from utils import save_checkpoint, load_checkpoint, plot_examples , plot_reals
-from model import Discriminator, Generator, initialize_weights
 
 writer = SummaryWriter()
-transforms = transforms.Compose(
-    [
-        transforms.Resize((config.IMAGE_SIZE,config.IMAGE_SIZE)) ,
-        transforms.ToTensor(),
-        transforms.Normalize(
-            [0.5 for _ in range(config.CHANNELS_IMG)] , [0.5 for _ in range(config.CHANNELS_IMG)]),
-    ]
-    )
 
-def train_fn(loader , critic , gen , opt_gen , opt_critic ,  fixed_noise, epoch , criterion):
+def train_fn(loader , gen , disc , opt_gen , opt_disc ,  fixed_noise, loss_fn):
     
-    for batch_idx , (real , _) in enumerate(loader):
-            real = real.to(config.device)
-            cur_batch_size = real.shape[0]
-            noise = torch.randn(cur_batch_size , config.Z_DIM , 1 , 1).to(config.device)
-            fake = gen(noise)
-            disc_real = critic(real).reshape(-1)
-            loss_disc_real = criterion(disc_real, torch.ones_like(disc_real))
-            disc_fake = critic(fake.detach()).reshape(-1)
-            loss_disc_fake = criterion(disc_fake, torch.zeros_like(disc_fake))
-            loss_disc = (loss_disc_real + loss_disc_fake) / 2
-            critic.zero_grad()
-            loss_disc.backward()
-            opt_critic.step()
+    for epoch in range(1, config.NUM_EPOCHS + 1):
 
-            ### Train Generator: min log(1 - D(G(z))) <-> max log(D(G(z))
-            output = critic(fake).reshape(-1)
-            loss_gen = criterion(output, torch.ones_like(output))
-            gen.zero_grad()
-            loss_gen.backward()
-            opt_gen.step()
+        with tqdm(loader) as progress_bar:
+            for real, _ in progress_bar:
+                    
+                    gen.train()
+                    disc.train()
+                    
+                    real = real.to(config.DEVICE)
+                    batch_size = real.shape[0]
 
-            logging.info(
-                    f"Epoch [{epoch}/{config.NUM_EPOCHS}] Batch {batch_idx}/{len(loader)} \
-                      Loss D: {loss_disc:.4f}, Loss G: {loss_gen:.4f}"
-                )
-            
-            writer.add_scalar("D_Loss/Losses", loss_disc , epoch)
-            writer.add_scalar("G_Loss/Losses", loss_gen , epoch)
-            
+                    noise = torch.randn(batch_size , config.Z_DIM , 1 , 1).to(config.DEVICE)
 
-            if batch_idx % 61 == 0:
-                with torch.no_grad():
-                    fake = gen(fixed_noise)
+                    # Training Discriminator
+                    fake = gen(noise)
+                    disc_real = disc(real).reshape(-1)
+                    loss_disc_real = loss_fn(disc_real, torch.ones_like(disc_real))
+                    disc_fake = disc(fake.detach()).reshape(-1)
+                    loss_disc_fake = loss_fn(disc_fake, torch.zeros_like(disc_fake))
+                    loss_disc = (loss_disc_real + loss_disc_fake) / 2
+                    
+                    disc.zero_grad()
+                    loss_disc.backward()
+                    opt_disc.step()
 
-                    img_grid_real = torchvision.utils.make_grid(real[:32], normalize = True)
-                    img_grid_fake = torchvision.utils.make_grid(fake[:32], normalize = True)
-                    plot_examples( "Fake_ep"+str(epoch) + ".png" ,"TestFolder/" , img_grid_fake)
-                    #plot_reals("Real_ep"+str(epoch)+ ".png" , "TestFolder/" , img_grid_real)
+                    # Train generator
+                    output = disc(fake).reshape(-1)
+                    loss_gen = loss_fn(output, torch.ones_like(output))
+
+                    gen.zero_grad()
+                    loss_gen.backward()
+                    opt_gen.step()
+
+                    # Display messege
+                    progress_bar.set_description(f' - Epoch {epoch}/{config.NUM_EPOCHS} - ')
+                    progress_bar.set_postfix(loss_G = loss_gen.item(), loss_D = loss_disc.item())
+                    
+        # Write the messege to Tensorboard
+        writer.add_scalar("D_Loss/Losses", loss_disc , epoch)
+        writer.add_scalar("G_Loss/Losses", loss_gen , epoch)
+        
+        if epoch % config.SAVE_IMG_FREQ == 0:
+            with torch.no_grad():
+
+                fake = gen(fixed_noise)
+                # img_grid_real = torchvision.utils.make_grid(real[:32], normalize = True)
+                img_grid_fake = torchvision.utils.make_grid(fake[:32], normalize = True)
+                plot_examples( "fake_ep" + str(epoch) + ".png" , "saved_samples/" , img_grid_fake)
+                # plot_examples("Real_ep"+str(epoch)+ ".png" , "saved_samples/" , img_grid_real)
+        
+        if epoch % config.SAVE_CHECKPOINT_FREQ == 0:
+            save_checkpoint(gen , opt_gen , filename = 'ep' + str(epoch) + '_' + config.CHECKPOINT_GEN, dir = config.CHECKPOINT_DIR)
+            save_checkpoint(disc , opt_disc , filename = 'ep' + str(epoch) + '_' + config.CHECKPOINT_DISC, dir = config.CHECKPOINT_DIR)
+            messegeDividingLine(f' - Checkpoint saved! - ')
     
-
-
-
 def main():
 
-    dataset = datasets.ImageFolder(root=config.ROOT_DIR, transform=transforms)
-    loader = DataLoader(
-        dataset,
-        batch_size = config.BATCH_SIZE,
-        shuffle=True,
-    )
+    checkGPU(config)
 
-    gen = Generator(config.Z_DIM , config.CHANNELS_IMG , config.FEATURES_GEN).to(config.device)
-    critic  = Discriminator(config.CHANNELS_IMG , config.FEATURES_CRITIC).to(config.device)
+    transforms = getTransform(config)
+    dataloader = getDataLoader(config, transforms)
 
-
-
-    opt_gen = optim.Adam(gen.parameters() , lr = config.G_LEARNING_RATE , betas = (0.5 , 0.999))
-    opt_critic = optim.Adam(critic.parameters() , lr = config.D_LEARNING_RATE , betas = (0.5 , 0.999))
-    criterion = nn.BCELoss()
-
+    generator, discriminator = getModel(config)
+    opt_gen, opt_disc = getOptimizer(config, generator.parameters(), discriminator.parameters())
+    loss_fn = getLossFunction()
 
     if config.LOAD_MODEL:
-        load_checkpoint(
-                config.CHECKPOINT_GEN, gen, opt_gen, config.G_LEARNING_RATE,
-            )
-        load_checkpoint(
-                config.CHECKPOINT_DISC , critic , opt_critic , config.D_LEARNING_RATE,
-            )
-    else:
-        initialize_weights(gen)
-        initialize_weights(critic)
+        load_checkpoint(config.CHECKPOINT_GEN, generator, opt_gen, config.G_LEARNING_RATE)
+        load_checkpoint(config.CHECKPOINT_DISC , discriminator , opt_disc , config.D_LEARNING_RATE)
 
-    fixed_noise = torch.randn(32 , config.Z_DIM , 1 , 1).to(config.device)
+    messegeDividingLine(" - Training starts -")
 
-#writer_real = SummaryWriter(f"logs/real")
-
-    step = 0
-
-
-    gen.train()
-    critic.train()
-
-    print("Train Starts")
-
-    for epoch in range(config.NUM_EPOCHS):
-
-        train_fn(loader , critic , gen , opt_gen , opt_critic , fixed_noise, epoch , criterion)
-
-        if config.SAVE_MODEL:
-            save_checkpoint(gen , opt_gen , filename = config.CHECKPOINT_GEN)
-            save_checkpoint(critic , opt_critic , filename = config.CHECKPOINT_DISC)
-
-        step += 1 
+    fixed_noise = torch.randn(32 , config.Z_DIM , 1 , 1).to(config.DEVICE)
+    train_fn(dataloader, generator, discriminator, opt_gen, opt_disc, fixed_noise, loss_fn)
 
         
 if __name__  == "__main__":
-    logging.basicConfig(level = logging.DEBUG)
-    torch.backends.cudnn.benchmark = True
     main()

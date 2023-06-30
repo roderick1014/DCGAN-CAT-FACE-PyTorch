@@ -1,24 +1,29 @@
-import torch
-from PIL import Image
+ROOT_DIR = "dataset/"
 
-ROOT_DIR = "Dataset/"
+DEVICE = "cuda"
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print("Using "+ str(device) + " for training. :)")
+CHECKPOINT_DIR = "checkpoints/"
 CHECKPOINT_GEN = "gen.pth.tar"
 CHECKPOINT_DISC = "disc.pth.tar"
 
-SAVE_MODEL = False
+SHOW_MODEL = True
+
+SAVE_MODEL = True
 LOAD_MODEL = False
 
-G_LEARNING_RATE = 1e-4 #1e-4
+G_LEARNING_RATE = 1e-4
 D_LEARNING_RATE = 1e-4
 
 BATCH_SIZE = 256
 IMAGE_SIZE = 64
 CHANNELS_IMG = 3
 Z_DIM = 100
-NUM_EPOCHS = 200000
-FEATURES_CRITIC = 64  #64
-FEATURES_GEN = 64  #64
+NUM_EPOCHS = 1000
+
+SAVE_CHECKPOINT_FREQ = 1
+SAVE_IMG_FREQ = 1
+
+FEATURES_CRITIC = 64
+FEATURES_GEN = 64
+
 CRITIC_ITERATIONS = 1
